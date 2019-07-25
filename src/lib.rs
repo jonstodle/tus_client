@@ -1,4 +1,4 @@
-use crate::http::{HttpHandler, HttpRequest, HttpResponse, default_headers};
+use crate::http::{HttpHandler, HttpRequest, default_headers};
 use std::ops::Deref;
 use std::io;
 use std::num::ParseIntError;
@@ -42,6 +42,48 @@ impl<'a> Client<'a> {
             total_size,
         })
     }
+
+    pub fn get_server_info(&self, url: &str) -> Result<ServerInfo, Error> {
+        let req = HttpRequest {
+            headers: HashMap::new(),
+            url: String::from(url),
+            body: (),
+        };
+
+        let response = self.http_handler.deref().options(req)?;
+
+        if ![200_usize, 204].contains(&response.status_code) {
+            return Err(Error::BadResponse);
+        }
+
+        let supported_versions: Vec<String> = response.headers.get(headers::TUS_VERSION).unwrap().split(',')
+            .map(String::from)
+            .collect();
+        let extensions: Vec<TusExtension> = if let Some(ext) = response.headers.get(headers::TUS_EXTENSION) {
+            ext.to_lowercase().split(',')
+                .map(|e| match e.trim() {
+                    "creation" => Some(TusExtension::Creation),
+                    "expiration" => Some(TusExtension::Expiration),
+                    "checksum" => Some(TusExtension::Checksum),
+                    "termination" => Some(TusExtension::Termination),
+                    "concatenation" => Some(TusExtension::Concatenation),
+                    _ => None
+                })
+                .filter(Option::is_some)
+                .map(Option::unwrap)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let max_upload_size = response.headers.get(headers::TUS_MAX_SIZE)
+            .and_then(|h| h.parse::<usize>().ok());
+
+        Ok(ServerInfo {
+            supported_versions,
+            extensions,
+            max_upload_size,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -51,8 +93,25 @@ pub struct ProgressResponse {
 }
 
 #[derive(Debug)]
+pub struct ServerInfo {
+    pub supported_versions: Vec<String>,
+    pub extensions: Vec<TusExtension>,
+    pub max_upload_size: Option<usize>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TusExtension {
+    Creation,
+    Expiration,
+    Checksum,
+    Termination,
+    Concatenation,
+}
+
+#[derive(Debug)]
 pub enum Error {
     NotFoundError,
+    BadResponse,
     IoError(io::Error),
     ParsingError(ParseIntError),
 }

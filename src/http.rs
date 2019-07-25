@@ -16,6 +16,7 @@ pub struct HttpResponse {
 
 pub trait HttpHandler {
     fn head(&self, req: HttpRequest<()>) -> Result<HttpResponse, Error>;
+    fn options(&self, req: HttpRequest<()>) -> Result<HttpResponse, Error>;
 }
 
 pub fn default_headers() -> HashMap<String, String> {
