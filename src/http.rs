@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::io::Error;
 
+#[derive(Debug)]
 pub struct HttpRequest<T> {
     pub headers: HashMap<String, String>,
     pub url: String,
     pub body: T,
 }
 
+#[derive(Debug)]
 pub struct HttpResponse {
     pub headers: HashMap<String, String>,
     pub status_code: usize,
