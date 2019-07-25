@@ -1,5 +1,5 @@
 use tus_client;
-use tus_client::{HttpRequest, HttpHandler, HttpResponse};
+use tus_client::http::{HttpRequest, HttpHandler, HttpResponse};
 use std::collections::HashMap;
 use std::io;
 

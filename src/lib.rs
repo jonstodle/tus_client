@@ -1,10 +1,11 @@
-pub use crate::http::{HttpHandler, HttpRequest, HttpResponse, default_headers};
+use crate::http::{HttpHandler, HttpRequest, HttpResponse, default_headers};
 use std::ops::Deref;
 use std::io;
 use std::num::ParseIntError;
+use std::collections::HashMap;
 
 mod headers;
-mod http;
+pub mod http;
 
 pub struct Client<'a> {
     http_handler: Box<dyn HttpHandler + 'a>,
