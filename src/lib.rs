@@ -45,6 +45,7 @@ impl<'a> Client<'a> {
         })
     }
 
+    /// Get information about the tus server
     pub fn get_server_info(&self, url: &str) -> Result<ServerInfo, Error> {
         let req = HttpRequest {
             headers: HashMap::new(),
