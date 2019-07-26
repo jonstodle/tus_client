@@ -28,14 +28,16 @@ impl<'a> Client<'a> {
 
         let response = self.http_handler.deref().head(req)?;
 
+        let bytes_uploaded = response.headers.get_by_key(headers::UPLOAD_OFFSET);
+        let total_size = response.headers.get_by_key(headers::UPLOAD_LENGTH)
+            .and_then(|l| l.parse::<usize>().ok());
+
         if response.status_code.to_string().starts_with("4") ||
-            !response.headers.contains_key(headers::UPLOAD_OFFSET) {
+            bytes_uploaded.is_none() {
             return Err(Error::NotFoundError);
         }
 
-        let bytes_uploaded: usize = response.headers.get(headers::UPLOAD_OFFSET).unwrap().parse()?;
-        let total_size = response.headers.get(headers::UPLOAD_LENGTH)
-            .and_then(|l| l.parse::<usize>().ok());
+        let bytes_uploaded = bytes_uploaded.unwrap().parse()?;
 
         Ok(ProgressResponse {
             bytes_uploaded,
@@ -56,10 +58,10 @@ impl<'a> Client<'a> {
             return Err(Error::BadResponse);
         }
 
-        let supported_versions: Vec<String> = response.headers.get(headers::TUS_VERSION).unwrap().split(',')
+        let supported_versions: Vec<String> = response.headers.get_by_key(headers::TUS_VERSION).unwrap().split(',')
             .map(String::from)
             .collect();
-        let extensions: Vec<TusExtension> = if let Some(ext) = response.headers.get(headers::TUS_EXTENSION) {
+        let extensions: Vec<TusExtension> = if let Some(ext) = response.headers.get_by_key(headers::TUS_EXTENSION) {
             ext.to_lowercase().split(',')
                 .map(|e| match e.trim() {
                     "creation" => Some(TusExtension::Creation),
@@ -75,7 +77,7 @@ impl<'a> Client<'a> {
         } else {
             Vec::new()
         };
-        let max_upload_size = response.headers.get(headers::TUS_MAX_SIZE)
+        let max_upload_size = response.headers.get_by_key(headers::TUS_MAX_SIZE)
             .and_then(|h| h.parse::<usize>().ok());
 
         Ok(ServerInfo {
@@ -125,5 +127,17 @@ impl From<io::Error> for Error {
 impl From<ParseIntError> for Error {
     fn from(e: ParseIntError) -> Self {
         Error::ParsingError(e)
+    }
+}
+
+trait HeaderMap {
+    fn get_by_key(&self, key: &str) -> Option<&String>;
+}
+
+impl HeaderMap for HashMap<String, String> {
+    fn get_by_key(&self, key: &str) -> Option<&String> {
+        self.keys()
+            .find(|k| k.to_lowercase().as_str() == key)
+            .and_then(|k| self.get(k))
     }
 }
