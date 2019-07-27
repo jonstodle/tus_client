@@ -3,6 +3,7 @@ use std::ops::Deref;
 use std::io;
 use std::num::ParseIntError;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 mod headers;
 pub mod http;
@@ -64,17 +65,10 @@ impl<'a> Client<'a> {
             .map(String::from)
             .collect();
         let extensions: Vec<TusExtension> = if let Some(ext) = response.headers.get_by_key(headers::TUS_EXTENSION) {
-            ext.to_lowercase().split(',')
-                .map(|e| match e.trim() {
-                    "creation" => Some(TusExtension::Creation),
-                    "expiration" => Some(TusExtension::Expiration),
-                    "checksum" => Some(TusExtension::Checksum),
-                    "termination" => Some(TusExtension::Termination),
-                    "concatenation" => Some(TusExtension::Concatenation),
-                    _ => None
-                })
-                .filter(Option::is_some)
-                .map(Option::unwrap)
+            ext.split(',')
+                .map(str::parse)
+                .filter(Result::is_ok)
+                .map(Result::unwrap)
                 .collect()
         } else {
             Vec::new()
@@ -132,6 +126,21 @@ pub enum TusExtension {
     Checksum,
     Termination,
     Concatenation,
+}
+
+impl FromStr for TusExtension {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "creation" => Ok(TusExtension::Creation),
+            "expiration" => Ok(TusExtension::Expiration),
+            "checksum" => Ok(TusExtension::Checksum),
+            "termination" => Ok(TusExtension::Termination),
+            "concatenation" => Ok(TusExtension::Concatenation),
+            _ => Err(())
+        }
+    }
 }
 
 #[derive(Debug)]
