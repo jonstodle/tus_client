@@ -27,7 +27,7 @@ impl Default for TestHandler {
 }
 
 impl HttpHandler for TestHandler {
-    fn head(&self, req: HttpRequest<()>) -> Result<HttpResponse, io::Error> {
+    fn head(&self, _req: HttpRequest<()>) -> Result<HttpResponse, io::Error> {
         let mut headers = HashMap::new();
         headers.insert("upload-length".to_owned(), self.total_upload_size.to_string());
         headers.insert("upload-offset".to_owned(), self.upload_progress.to_string());
@@ -38,7 +38,7 @@ impl HttpHandler for TestHandler {
         })
     }
 
-    fn options(&self, req: HttpRequest<()>) -> Result<HttpResponse, io::Error> {
+    fn options(&self, _req: HttpRequest<()>) -> Result<HttpResponse, io::Error> {
         let mut headers = HashMap::new();
         headers.insert("tus-version".to_owned(), self.tus_version.clone());
         headers.insert("tus-extension".to_owned(), self.extensions.clone());
