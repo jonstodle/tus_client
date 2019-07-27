@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::io::Error;
-use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum HttpMethod {
