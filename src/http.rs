@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::Error;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum HttpMethod {
@@ -8,6 +9,12 @@ pub enum HttpMethod {
     Options,
     Post,
     Delete,
+}
+
+impl fmt::Display for HttpMethod {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Debug)]

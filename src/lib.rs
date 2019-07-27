@@ -97,9 +97,7 @@ impl<'a> Client<'a> {
         let mut headers = headers.unwrap_or_default();
 
         let method = if self.use_method_override {
-            headers.insert(
-                headers::X_HTTP_METHOD_OVERRIDE.to_owned(),
-                format!("{:?}", method).to_uppercase());
+            headers.insert(headers::X_HTTP_METHOD_OVERRIDE.to_owned(), method.to_string());
             HttpMethod::Post
         } else {
             method
