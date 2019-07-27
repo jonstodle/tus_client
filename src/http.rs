@@ -1,8 +1,19 @@
 use std::collections::HashMap;
 use std::io::Error;
+use std::fmt::{Display, Formatter};
+
+#[derive(Debug)]
+pub enum HttpMethod {
+    Head,
+    Patch,
+    Options,
+    Post,
+    Delete,
+}
 
 #[derive(Debug)]
 pub struct HttpRequest<T> {
+    pub method: HttpMethod,
     pub headers: HashMap<String, String>,
     pub url: String,
     pub body: T,
@@ -15,8 +26,7 @@ pub struct HttpResponse {
 }
 
 pub trait HttpHandler {
-    fn head(&self, req: HttpRequest<()>) -> Result<HttpResponse, Error>;
-    fn options(&self, req: HttpRequest<()>) -> Result<HttpResponse, Error>;
+    fn handle_request(&self, req: HttpRequest<()>) -> Result<HttpResponse, Error>;
 }
 
 pub fn default_headers() -> HashMap<String, String> {

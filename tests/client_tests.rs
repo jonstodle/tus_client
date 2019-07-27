@@ -1,5 +1,5 @@
 use tus_client;
-use tus_client::http::{HttpRequest, HttpHandler, HttpResponse};
+use tus_client::http::{HttpRequest, HttpHandler, HttpResponse, HttpMethod};
 use std::collections::HashMap;
 use std::io;
 use tus_client::TusExtension;
@@ -27,27 +27,31 @@ impl Default for TestHandler {
 }
 
 impl HttpHandler for TestHandler {
-    fn head(&self, _req: HttpRequest<()>) -> Result<HttpResponse, io::Error> {
-        let mut headers = HashMap::new();
-        headers.insert("upload-length".to_owned(), self.total_upload_size.to_string());
-        headers.insert("upload-offset".to_owned(), self.upload_progress.to_string());
+    fn handle_request(&self, req: HttpRequest<()>) -> Result<HttpResponse, io::Error> {
+        match &req.method {
+            HttpMethod::Head => {
+                let mut headers = HashMap::new();
+                headers.insert("upload-length".to_owned(), self.total_upload_size.to_string());
+                headers.insert("upload-offset".to_owned(), self.upload_progress.to_string());
 
-        Ok(HttpResponse {
-            status_code: self.status_code,
-            headers,
-        })
-    }
+                Ok(HttpResponse {
+                    status_code: self.status_code,
+                    headers,
+                })
+            }
+            HttpMethod::Options => {
+                let mut headers = HashMap::new();
+                headers.insert("tus-version".to_owned(), self.tus_version.clone());
+                headers.insert("tus-extension".to_owned(), self.extensions.clone());
+                headers.insert("tus-max-size".to_owned(), self.max_upload_size.to_string());
 
-    fn options(&self, _req: HttpRequest<()>) -> Result<HttpResponse, io::Error> {
-        let mut headers = HashMap::new();
-        headers.insert("tus-version".to_owned(), self.tus_version.clone());
-        headers.insert("tus-extension".to_owned(), self.extensions.clone());
-        headers.insert("tus-max-size".to_owned(), self.max_upload_size.to_string());
-
-        Ok(HttpResponse {
-            status_code: self.status_code,
-            headers,
-        })
+                Ok(HttpResponse {
+                    status_code: self.status_code,
+                    headers,
+                })
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
