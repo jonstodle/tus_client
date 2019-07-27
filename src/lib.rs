@@ -21,7 +21,7 @@ impl<'a> Client<'a> {
         }
     }
 
-    pub fn new_with_method_override(http_handler: impl HttpHandler + 'a) -> Self {
+    pub fn with_method_override(http_handler: impl HttpHandler + 'a) -> Self {
         Client {
             use_method_override: true,
             http_handler: Box::new(http_handler),
