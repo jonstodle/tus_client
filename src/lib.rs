@@ -1,12 +1,17 @@
-use crate::http::{HttpHandler, HttpRequest, default_headers, HttpMethod};
-use std::ops::Deref;
-use std::io;
-use std::num::ParseIntError;
+use crate::http::{default_headers, Headers, HttpHandler, HttpMethod, HttpRequest};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io;
+use std::io::{Read, Seek, SeekFrom};
+use std::num::ParseIntError;
+use std::ops::Deref;
+use std::path::Path;
 use std::str::FromStr;
 
 mod headers;
 pub mod http;
+
+const DEFAULT_CHUNK_SIZE: usize = 5 * 1024 * 1024;
 
 pub struct Client<'a> {
     use_method_override: bool,
@@ -30,16 +35,17 @@ impl<'a> Client<'a> {
 
     /// Get the number of bytes already uploaded to the server
     pub fn get_progress(&self, url: &str) -> Result<ProgressResponse, Error> {
-        let req = self.create_request(HttpMethod::Head, url, (), Some(default_headers()));
+        let req = self.create_request(HttpMethod::Head, url, None, Some(default_headers()));
 
         let response = self.http_handler.deref().handle_request(req)?;
 
         let bytes_uploaded = response.headers.get_by_key(headers::UPLOAD_OFFSET);
-        let total_size = response.headers.get_by_key(headers::UPLOAD_LENGTH)
+        let total_size = response
+            .headers
+            .get_by_key(headers::UPLOAD_LENGTH)
             .and_then(|l| l.parse::<usize>().ok());
 
-        if response.status_code.to_string().starts_with("4") ||
-            bytes_uploaded.is_none() {
+        if response.status_code.to_string().starts_with('4') || bytes_uploaded.is_none() {
             return Err(Error::NotFoundError);
         }
 
@@ -51,29 +57,125 @@ impl<'a> Client<'a> {
         })
     }
 
+    pub fn upload(&self, url: &str, path: &Path) -> Result<(), Error> {
+        self.upload_with_chunk_size(url, path, DEFAULT_CHUNK_SIZE)
+    }
+
+    pub fn upload_with_chunk_size(
+        &self,
+        url: &str,
+        path: &Path,
+        chunk_size: usize,
+    ) -> Result<(), Error> {
+        let progress = self.get_progress(url)?;
+        let mut file = File::open(path)?;
+        let file_len = file.metadata()?.len();
+
+        if let Some(total_size) = progress.total_size {
+            if file_len as usize != total_size {
+                return Err(Error::UnequalSizeError);
+            }
+        }
+
+        let mut buffer = vec![0; chunk_size];
+        let mut progress = progress.bytes_uploaded;
+
+        file.seek(SeekFrom::Start(progress as u64))?;
+
+        loop {
+            let mut bytes_loaded = 0;
+            loop {
+                let mut end = bytes_loaded + 8000;
+                if end > chunk_size {
+                    end = chunk_size;
+                }
+
+                let bytes_read = file.read(&mut buffer[bytes_loaded..end])?;
+                bytes_loaded += bytes_read;
+
+                if bytes_read == 0 || end == chunk_size {
+                    break;
+                }
+            }
+            if buffer.is_empty() {
+                return Err(Error::FileReadError);
+            }
+
+            let req = self.create_request(
+                HttpMethod::Patch,
+                url,
+                Some(&buffer[..bytes_loaded]),
+                Some(create_upload_headers(progress)),
+            );
+
+            let response = self.http_handler.deref().handle_request(req)?;
+
+            if response.status_code == 409 {
+                return Err(Error::WrongUploadOffsetError);
+            }
+
+            if response.status_code == 404 {
+                return Err(Error::NotFoundError);
+            }
+
+            if response.status_code != 204 {
+                return Err(Error::BadResponse(format!(
+                    "Expected response status code to be '204', but received '{}'",
+                    response.status_code
+                )));
+            }
+
+            let upload_offset = match response.headers.get_by_key(headers::UPLOAD_OFFSET) {
+                Some(offset) => Ok(offset),
+                None => Err(Error::BadResponse(format!(
+                    "'{}' header missing from response",
+                    headers::UPLOAD_OFFSET
+                ))),
+            }?;
+
+            progress = upload_offset.parse()?;
+
+            if progress >= file_len as usize {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Get information about the tus server
     pub fn get_server_info(&self, url: &str) -> Result<ServerInfo, Error> {
-        let req = self.create_request(HttpMethod::Options, url, (), None);
+        let req = self.create_request(HttpMethod::Options, url, None, None);
 
         let response = self.http_handler.deref().handle_request(req)?;
 
         if ![200_usize, 204].contains(&response.status_code) {
-            return Err(Error::BadResponse);
+            return Err(Error::BadResponse(format!(
+                "Expected response status code to be '200' or '204', but received '{}'",
+                response.status_code
+            )));
         }
 
-        let supported_versions: Vec<String> = response.headers.get_by_key(headers::TUS_VERSION).unwrap().split(',')
+        let supported_versions: Vec<String> = response
+            .headers
+            .get_by_key(headers::TUS_VERSION)
+            .unwrap()
+            .split(',')
             .map(String::from)
             .collect();
-        let extensions: Vec<TusExtension> = if let Some(ext) = response.headers.get_by_key(headers::TUS_EXTENSION) {
-            ext.split(',')
-                .map(str::parse)
-                .filter(Result::is_ok)
-                .map(Result::unwrap)
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let max_upload_size = response.headers.get_by_key(headers::TUS_MAX_SIZE)
+        let extensions: Vec<TusExtension> =
+            if let Some(ext) = response.headers.get_by_key(headers::TUS_EXTENSION) {
+                ext.split(',')
+                    .map(str::parse)
+                    .filter(Result::is_ok)
+                    .map(Result::unwrap)
+                    .collect()
+            } else {
+                Vec::new()
+            };
+        let max_upload_size = response
+            .headers
+            .get_by_key(headers::TUS_MAX_SIZE)
             .and_then(|h| h.parse::<usize>().ok());
 
         Ok(ServerInfo {
@@ -83,15 +185,20 @@ impl<'a> Client<'a> {
         })
     }
 
-    fn create_request<T>(&self,
-                         method: HttpMethod,
-                         url: &str,
-                         body: T,
-                         headers: Option<HashMap<String, String>>) -> HttpRequest<T> {
+    fn create_request<'b>(
+        &self,
+        method: HttpMethod,
+        url: &str,
+        body: Option<&'b [u8]>,
+        headers: Option<Headers>,
+    ) -> HttpRequest<'b> {
         let mut headers = headers.unwrap_or_default();
 
         let method = if self.use_method_override {
-            headers.insert(headers::X_HTTP_METHOD_OVERRIDE.to_owned(), method.to_string());
+            headers.insert(
+                headers::X_HTTP_METHOD_OVERRIDE.to_owned(),
+                method.to_string(),
+            );
             HttpMethod::Post
         } else {
             method
@@ -138,7 +245,7 @@ impl FromStr for TusExtension {
             "checksum" => Ok(TusExtension::Checksum),
             "termination" => Ok(TusExtension::Termination),
             "concatenation" => Ok(TusExtension::Concatenation),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
@@ -146,9 +253,12 @@ impl FromStr for TusExtension {
 #[derive(Debug)]
 pub enum Error {
     NotFoundError,
-    BadResponse,
+    BadResponse(String),
     IoError(io::Error),
     ParsingError(ParseIntError),
+    UnequalSizeError,
+    FileReadError,
+    WrongUploadOffsetError,
 }
 
 impl From<io::Error> for Error {
@@ -173,4 +283,14 @@ impl HeaderMap for HashMap<String, String> {
             .find(|k| k.to_lowercase().as_str() == key)
             .and_then(|k| self.get(k))
     }
+}
+
+fn create_upload_headers(progress: usize) -> Headers {
+    let mut headers = default_headers();
+    headers.insert(
+        headers::CONTENT_TYPE.to_owned(),
+        "application/offset+octet-stream".to_owned(),
+    );
+    headers.insert(headers::UPLOAD_OFFSET.to_owned(), progress.to_string());
+    headers
 }

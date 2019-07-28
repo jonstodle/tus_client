@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::fmt;
 
+pub type Headers = HashMap<String, String>;
+
 #[derive(Debug)]
 pub enum HttpMethod {
     Head,
@@ -18,25 +20,25 @@ impl fmt::Display for HttpMethod {
 }
 
 #[derive(Debug)]
-pub struct HttpRequest<T> {
+pub struct HttpRequest<'a> {
     pub method: HttpMethod,
-    pub headers: HashMap<String, String>,
+    pub headers: Headers,
     pub url: String,
-    pub body: T,
+    pub body: Option<&'a [u8]>,
 }
 
 #[derive(Debug)]
 pub struct HttpResponse {
-    pub headers: HashMap<String, String>,
+    pub headers: Headers,
     pub status_code: usize,
 }
 
 pub trait HttpHandler {
-    fn handle_request(&self, req: HttpRequest<()>) -> Result<HttpResponse, Error>;
+    fn handle_request(&self, req: HttpRequest) -> Result<HttpResponse, Error>;
 }
 
-pub fn default_headers() -> HashMap<String, String> {
-    let mut map = HashMap::new();
+pub fn default_headers() -> Headers {
+    let mut map = Headers::new();
     map.insert(String::from(crate::headers::TUS_RESUMABLE), String::from("1.0.0"));
     map
 }

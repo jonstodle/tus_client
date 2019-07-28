@@ -1,7 +1,9 @@
-use tus_client;
-use tus_client::http::{HttpRequest, HttpHandler, HttpResponse, HttpMethod};
 use std::collections::HashMap;
 use std::io;
+use std::io::Write;
+use tempfile::NamedTempFile;
+use tus_client;
+use tus_client::http::{HttpHandler, HttpMethod, HttpRequest, HttpResponse};
 use tus_client::TusExtension;
 
 struct TestHandler {
@@ -27,11 +29,14 @@ impl Default for TestHandler {
 }
 
 impl HttpHandler for TestHandler {
-    fn handle_request(&self, req: HttpRequest<()>) -> Result<HttpResponse, io::Error> {
+    fn handle_request(&self, req: HttpRequest) -> Result<HttpResponse, io::Error> {
         match &req.method {
             HttpMethod::Head => {
                 let mut headers = HashMap::new();
-                headers.insert("upload-length".to_owned(), self.total_upload_size.to_string());
+                headers.insert(
+                    "upload-length".to_owned(),
+                    self.total_upload_size.to_string(),
+                );
                 headers.insert("upload-offset".to_owned(), self.upload_progress.to_string());
 
                 Ok(HttpResponse {
@@ -50,6 +55,26 @@ impl HttpHandler for TestHandler {
                     headers,
                 })
             }
+            HttpMethod::Patch => {
+                let mut headers = HashMap::new();
+                headers.insert("tus-version".to_owned(), self.tus_version.clone());
+                headers.insert(
+                    "upload-offset".to_owned(),
+                    (req.body.unwrap().len()
+                        + req
+                            .headers
+                            .get("upload-offset")
+                            .unwrap()
+                            .parse::<usize>()
+                            .unwrap())
+                    .to_string(),
+                );
+
+                Ok(HttpResponse {
+                    status_code: self.status_code,
+                    headers,
+                })
+            }
             _ => unreachable!(),
         }
     }
@@ -62,7 +87,8 @@ fn should_report_correct_upload_progress() {
         ..TestHandler::default()
     });
 
-    let progress = client.get_progress("/something")
+    let progress = client
+        .get_progress("/something")
         .expect("'get_progress' call failed");
 
     assert_eq!(1234, progress.bytes_uploaded);
@@ -81,7 +107,7 @@ fn should_return_not_found_at_4xx_status() {
     assert!(result.is_err());
     match result {
         Err(tus_client::Error::NotFoundError) => {}
-        _ => panic!("Expected 'Error::NotFoundError'")
+        _ => panic!("Expected 'Error::NotFoundError'"),
     }
 }
 
@@ -94,10 +120,54 @@ fn should_return_server_info() {
         ..TestHandler::default()
     });
 
-    let result = client.get_server_info("/something")
+    let result = client
+        .get_server_info("/something")
         .expect("'get_server_info' call failed");
 
     assert_eq!(vec!["1.0.0", "0.2.2"], result.supported_versions);
-    assert_eq!(vec![TusExtension::Creation, TusExtension::Termination], result.extensions);
+    assert_eq!(
+        vec![TusExtension::Creation, TusExtension::Termination],
+        result.extensions
+    );
     assert_eq!(12345, result.max_upload_size.unwrap());
+}
+
+#[test]
+fn should_upload_file() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    let buffer: Vec<u8> = (0..(1024 * 763)).map(|_| rand::random::<u8>()).collect();
+    for _ in 0..20 {
+        temp_file.write_all(&buffer[..]).unwrap();
+    }
+
+    let client = tus_client::Client::new(TestHandler {
+        upload_progress: 0,
+        total_upload_size: temp_file.as_file().metadata().unwrap().len() as usize,
+        status_code: 204,
+        ..TestHandler::default()
+    });
+
+    client
+        .upload("/something", temp_file.path())
+        .expect("'upload_with_chunk_size' call failed");
+}
+
+#[test]
+fn should_upload_file_with_custom_chunk_size() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    let buffer: Vec<u8> = (0..(1024 * 763)).map(|_| rand::random::<u8>()).collect();
+    for _ in 0..20 {
+        temp_file.write_all(&buffer[..]).unwrap();
+    }
+
+    let client = tus_client::Client::new(TestHandler {
+        upload_progress: 0,
+        total_upload_size: temp_file.as_file().metadata().unwrap().len() as usize,
+        status_code: 204,
+        ..TestHandler::default()
+    });
+
+    client
+        .upload_with_chunk_size("/something", temp_file.path(), 9 * 87 * 65 * 43)
+        .expect("'upload_with_chunk_size' call failed");
 }

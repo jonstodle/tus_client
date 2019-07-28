@@ -18,3 +18,6 @@ pub const TUS_MAX_SIZE: &'static str = "tus-max-size";
 
 /// Use this header if its environment does not support the PATCH or DELETE methods.
 pub const X_HTTP_METHOD_OVERRIDE: &'static str = "x-http-method-override";
+
+/// Use this header if its environment does not support the PATCH or DELETE methods.
+pub const CONTENT_TYPE: &'static str = "content-type";
