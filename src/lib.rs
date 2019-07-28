@@ -34,7 +34,7 @@ impl<'a> Client<'a> {
     }
 
     /// Get the number of bytes already uploaded to the server
-    pub fn get_progress(&self, url: &str) -> Result<ProgressResponse, Error> {
+    pub fn get_info(&self, url: &str) -> Result<UploadInfo, Error> {
         let req = self.create_request(HttpMethod::Head, url, None, Some(default_headers()));
 
         let response = self.http_handler.deref().handle_request(req)?;
@@ -44,6 +44,25 @@ impl<'a> Client<'a> {
             .headers
             .get_by_key(headers::UPLOAD_LENGTH)
             .and_then(|l| l.parse::<usize>().ok());
+        let metadata = response
+            .headers
+            .get_by_key(headers::UPLOAD_METADATA)
+            .and_then(|data| base64::decode(data).ok())
+            .map(|decoded| {
+                String::from_utf8(decoded).unwrap().split(';').fold(
+                    HashMap::new(),
+                    |mut acc, key_val| {
+                        let mut parts = key_val.splitn(2, ':');
+                        if let Some(key) = parts.next() {
+                            acc.insert(
+                                String::from(key),
+                                String::from(parts.next().unwrap_or_default()),
+                            );
+                        }
+                        acc
+                    },
+                )
+            });
 
         if response.status_code.to_string().starts_with('4') || bytes_uploaded.is_none() {
             return Err(Error::NotFoundError);
@@ -51,9 +70,10 @@ impl<'a> Client<'a> {
 
         let bytes_uploaded = bytes_uploaded.unwrap().parse()?;
 
-        Ok(ProgressResponse {
+        Ok(UploadInfo {
             bytes_uploaded,
             total_size,
+            metadata,
         })
     }
 
@@ -67,11 +87,11 @@ impl<'a> Client<'a> {
         path: &Path,
         chunk_size: usize,
     ) -> Result<(), Error> {
-        let progress = self.get_progress(url)?;
+        let info = self.get_info(url)?;
         let file = File::open(path)?;
         let file_len = file.metadata()?.len();
 
-        if let Some(total_size) = progress.total_size {
+        if let Some(total_size) = info.total_size {
             if file_len as usize != total_size {
                 return Err(Error::UnequalSizeError);
             }
@@ -79,7 +99,7 @@ impl<'a> Client<'a> {
 
         let mut reader = BufReader::new(&file);
         let mut buffer = vec![0; chunk_size];
-        let mut progress = progress.bytes_uploaded;
+        let mut progress = info.bytes_uploaded;
 
         reader.seek(SeekFrom::Start(progress as u64))?;
 
@@ -236,9 +256,10 @@ impl<'a> Client<'a> {
 }
 
 #[derive(Debug)]
-pub struct ProgressResponse {
+pub struct UploadInfo {
     pub bytes_uploaded: usize,
     pub total_size: Option<usize>,
+    pub metadata: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug)]

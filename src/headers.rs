@@ -23,7 +23,7 @@ pub const X_HTTP_METHOD_OVERRIDE: &'static str = "x-http-method-override";
 pub const CONTENT_TYPE: &'static str = "content-type";
 
 /// Use this header if its environment does not support the PATCH or DELETE methods.
-pub const UPLOAD_DEFER_LENGTH: &'static str = "upload-defer-length";
+//pub const UPLOAD_DEFER_LENGTH: &'static str = "upload-defer-length";
 
 /// Use this header if its environment does not support the PATCH or DELETE methods.
 pub const UPLOAD_METADATA: &'static str = "upload-metadata";

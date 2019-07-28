@@ -38,6 +38,10 @@ impl HttpHandler for TestHandler {
                     self.total_upload_size.to_string(),
                 );
                 headers.insert("upload-offset".to_owned(), self.upload_progress.to_string());
+                headers.insert(
+                    "upload-metadata".to_owned(),
+                    base64::encode("key_one:value_one;key_two:value_two;k"),
+                );
 
                 Ok(HttpResponse {
                     status_code: self.status_code,
@@ -106,12 +110,12 @@ fn should_report_correct_upload_progress() {
         ..TestHandler::default()
     });
 
-    let progress = client
-        .get_progress("/something")
+    let info = client
+        .get_info("/something")
         .expect("'get_progress' call failed");
 
-    assert_eq!(1234, progress.bytes_uploaded);
-    assert_eq!(2345, progress.total_size.unwrap());
+    assert_eq!(1234, info.bytes_uploaded);
+    assert_eq!(2345, info.total_size.unwrap());
 }
 
 #[test]
@@ -121,7 +125,7 @@ fn should_return_not_found_at_4xx_status() {
         ..TestHandler::default()
     });
 
-    let result = client.get_progress("/something");
+    let result = client.get_info("/something");
 
     assert!(result.is_err());
     match result {
