@@ -75,9 +75,28 @@ impl HttpHandler for TestHandler {
                     headers,
                 })
             }
+            HttpMethod::Post => {
+                let mut headers = HashMap::new();
+                headers.insert("tus-version".to_owned(), self.tus_version.clone());
+                headers.insert("location".to_owned(), "/something_else".to_owned());
+
+                Ok(HttpResponse {
+                    status_code: self.status_code,
+                    headers,
+                })
+            }
             _ => unreachable!(),
         }
     }
+}
+
+fn create_temp_file() -> NamedTempFile {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    let buffer: Vec<u8> = (0..(1024 * 763)).map(|_| rand::random::<u8>()).collect();
+    for _ in 0..20 {
+        temp_file.write_all(&buffer[..]).unwrap();
+    }
+    temp_file
 }
 
 #[test]
@@ -134,11 +153,7 @@ fn should_return_server_info() {
 
 #[test]
 fn should_upload_file() {
-    let mut temp_file = NamedTempFile::new().unwrap();
-    let buffer: Vec<u8> = (0..(1024 * 763)).map(|_| rand::random::<u8>()).collect();
-    for _ in 0..20 {
-        temp_file.write_all(&buffer[..]).unwrap();
-    }
+    let temp_file = create_temp_file();
 
     let client = tus_client::Client::new(TestHandler {
         upload_progress: 0,
@@ -149,16 +164,12 @@ fn should_upload_file() {
 
     client
         .upload("/something", temp_file.path())
-        .expect("'upload_with_chunk_size' call failed");
+        .expect("'upload' call failed");
 }
 
 #[test]
 fn should_upload_file_with_custom_chunk_size() {
-    let mut temp_file = NamedTempFile::new().unwrap();
-    let buffer: Vec<u8> = (0..(1024 * 763)).map(|_| rand::random::<u8>()).collect();
-    for _ in 0..20 {
-        temp_file.write_all(&buffer[..]).unwrap();
-    }
+    let temp_file = create_temp_file();
 
     let client = tus_client::Client::new(TestHandler {
         upload_progress: 0,
@@ -170,4 +181,44 @@ fn should_upload_file_with_custom_chunk_size() {
     client
         .upload_with_chunk_size("/something", temp_file.path(), 9 * 87 * 65 * 43)
         .expect("'upload_with_chunk_size' call failed");
+}
+
+#[test]
+fn should_receive_upload_path() {
+    let temp_file = create_temp_file();
+
+    let client = tus_client::Client::new(TestHandler {
+        status_code: 201,
+        ..TestHandler::default()
+    });
+
+    let mut metadata = HashMap::new();
+    metadata.insert("key_one".to_owned(), "value_one".to_owned());
+    metadata.insert("key_two".to_owned(), "value_two".to_owned());
+
+    let result = client
+        .create("/something", temp_file.path())
+        .expect("'create_with_metadata' call failed");
+
+    assert!(!result.is_empty());
+}
+
+#[test]
+fn should_receive_upload_path_with_metadata() {
+    let temp_file = create_temp_file();
+
+    let client = tus_client::Client::new(TestHandler {
+        status_code: 201,
+        ..TestHandler::default()
+    });
+
+    let mut metadata = HashMap::new();
+    metadata.insert("key_one".to_owned(), "value_one".to_owned());
+    metadata.insert("key_two".to_owned(), "value_two".to_owned());
+
+    let result = client
+        .create_with_metadata("/something", temp_file.path(), metadata)
+        .expect("'create_with_metadata' call failed");
+
+    assert!(!result.is_empty());
 }

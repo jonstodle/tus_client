@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::num::ParseIntError;
-use std::ops::Deref;
+use std::ops::{Add, Deref};
 use std::path::Path;
 use std::str::FromStr;
 
@@ -107,18 +107,12 @@ impl<'a> Client<'a> {
             }
 
             if response.status_code != 204 {
-                return Err(Error::BadResponse(format!(
-                    "Expected response status code to be '204', but received '{}'",
-                    response.status_code
-                )));
+                return Err(Error::UnexpectedStatusCode(response.status_code));
             }
 
             let upload_offset = match response.headers.get_by_key(headers::UPLOAD_OFFSET) {
                 Some(offset) => Ok(offset),
-                None => Err(Error::BadResponse(format!(
-                    "'{}' header missing from response",
-                    headers::UPLOAD_OFFSET
-                ))),
+                None => Err(Error::MissingHeader(headers::UPLOAD_OFFSET.to_owned())),
             }?;
 
             progress = upload_offset.parse()?;
@@ -138,10 +132,7 @@ impl<'a> Client<'a> {
         let response = self.http_handler.deref().handle_request(req)?;
 
         if ![200_usize, 204].contains(&response.status_code) {
-            return Err(Error::BadResponse(format!(
-                "Expected response status code to be '200' or '204', but received '{}'",
-                response.status_code
-            )));
+            return Err(Error::UnexpectedStatusCode(response.status_code));
         }
 
         let supported_versions: Vec<String> = response
@@ -171,6 +162,49 @@ impl<'a> Client<'a> {
             extensions,
             max_upload_size,
         })
+    }
+
+    pub fn create(&self, url: &str, path: &Path) -> Result<String, Error> {
+        self.create_with_metadata(url, path, HashMap::new())
+    }
+
+    pub fn create_with_metadata(
+        &self,
+        url: &str,
+        path: &Path,
+        metadata: HashMap<String, String>,
+    ) -> Result<String, Error> {
+        let mut headers = default_headers();
+        headers.insert(
+            headers::UPLOAD_LENGTH.to_owned(),
+            path.metadata()?.len().to_string(),
+        );
+        if !metadata.is_empty() {
+            let data = metadata.iter().fold(String::new(), |acc, (key, value)| {
+                acc.add(&format!("{}:{};", key, value))
+            });
+            headers.insert(headers::UPLOAD_METADATA.to_owned(), base64::encode(&data));
+        }
+
+        let req = self.create_request(HttpMethod::Post, url, None, Some(headers));
+
+        let response = self.http_handler.deref().handle_request(req)?;
+
+        if response.status_code == 413 {
+            return Err(Error::FileTooLarge);
+        }
+
+        if response.status_code != 201 {
+            return Err(Error::UnexpectedStatusCode(response.status_code));
+        }
+
+        let location = response.headers.get_by_key(headers::LOCATION);
+
+        if location.is_none() {
+            return Err(Error::MissingHeader(headers::LOCATION.to_owned()));
+        }
+
+        Ok(location.unwrap().to_owned())
     }
 
     fn create_request<'b>(
@@ -240,13 +274,15 @@ impl FromStr for TusExtension {
 
 #[derive(Debug)]
 pub enum Error {
+    UnexpectedStatusCode(usize),
     NotFoundError,
-    BadResponse(String),
+    MissingHeader(String),
     IoError(io::Error),
     ParsingError(ParseIntError),
     UnequalSizeError,
     FileReadError,
     WrongUploadOffsetError,
+    FileTooLarge,
 }
 
 impl From<io::Error> for Error {

@@ -5,6 +5,7 @@ authors = ["Jon Grythe Stødle <jonstodle@outlook.com>"]
 edition = "2018"
 
 [dependencies]
+base64 = "0.10"
 
 [dev-dependencies]
 tempfile = "3.1.0"
