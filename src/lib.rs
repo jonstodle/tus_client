@@ -83,28 +83,15 @@ impl<'a> Client<'a> {
         file.seek(SeekFrom::Start(progress as u64))?;
 
         loop {
-            let mut bytes_loaded = 0;
-            loop {
-                let mut end = bytes_loaded + 8000;
-                if end > chunk_size {
-                    end = chunk_size;
-                }
-
-                let bytes_read = file.read(&mut buffer[bytes_loaded..end])?;
-                bytes_loaded += bytes_read;
-
-                if bytes_read == 0 || end == chunk_size {
-                    break;
-                }
-            }
-            if buffer.is_empty() {
+            let bytes_read = file.read(&mut buffer)?;
+            if bytes_read == 0 {
                 return Err(Error::FileReadError);
             }
 
             let req = self.create_request(
                 HttpMethod::Patch,
                 url,
-                Some(&buffer[..bytes_loaded]),
+                Some(&buffer[..bytes_read]),
                 Some(create_upload_headers(progress)),
             );
 
