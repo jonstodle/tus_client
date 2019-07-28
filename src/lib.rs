@@ -227,6 +227,18 @@ impl<'a> Client<'a> {
         Ok(location.unwrap().to_owned())
     }
 
+    pub fn delete(&self, url: &str) -> Result<(), Error> {
+        let req = self.create_request(HttpMethod::Delete, url, None, Some(default_headers()));
+
+        let response = self.http_handler.deref().handle_request(req)?;
+
+        if response.status_code != 204 {
+            return Err(Error::UnexpectedStatusCode(response.status_code));
+        }
+
+        Ok(())
+    }
+
     fn create_request<'b>(
         &self,
         method: HttpMethod,

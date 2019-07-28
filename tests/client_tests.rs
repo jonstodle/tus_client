@@ -89,6 +89,15 @@ impl HttpHandler for TestHandler {
                     headers,
                 })
             }
+            HttpMethod::Delete => {
+                let mut headers = HashMap::new();
+                headers.insert("tus-version".to_owned(), self.tus_version.clone());
+
+                Ok(HttpResponse {
+                    status_code: self.status_code,
+                    headers,
+                })
+            }
             _ => unreachable!(),
         }
     }
@@ -234,4 +243,14 @@ fn should_receive_upload_path_with_metadata() {
         .expect("'create_with_metadata' call failed");
 
     assert!(!result.is_empty());
+}
+
+#[test]
+fn should_receive_204_after_deleting_file() {
+    let client = tus_client::Client::new(TestHandler {
+        status_code: 204,
+        ..TestHandler::default()
+    });
+
+    client.delete("/something").expect("'delete' call failed");
 }
