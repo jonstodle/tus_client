@@ -114,8 +114,17 @@ fn should_report_correct_upload_progress() {
         .get_info("/something")
         .expect("'get_progress' call failed");
 
+    let metadata = info.metadata.unwrap();
     assert_eq!(1234, info.bytes_uploaded);
     assert_eq!(2345, info.total_size.unwrap());
+    assert_eq!(
+        String::from("value_one"),
+        metadata.get("key_one").unwrap().to_owned()
+    );
+    assert_eq!(
+        String::from("value_two"),
+        metadata.get("key_two").unwrap().to_owned()
+    );
 }
 
 #[test]
