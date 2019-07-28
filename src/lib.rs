@@ -2,7 +2,7 @@ use crate::http::{default_headers, Headers, HttpHandler, HttpMethod, HttpRequest
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::num::ParseIntError;
 use std::ops::Deref;
 use std::path::Path;
@@ -68,7 +68,7 @@ impl<'a> Client<'a> {
         chunk_size: usize,
     ) -> Result<(), Error> {
         let progress = self.get_progress(url)?;
-        let mut file = File::open(path)?;
+        let file = File::open(path)?;
         let file_len = file.metadata()?.len();
 
         if let Some(total_size) = progress.total_size {
@@ -77,13 +77,14 @@ impl<'a> Client<'a> {
             }
         }
 
+        let mut reader = BufReader::new(&file);
         let mut buffer = vec![0; chunk_size];
         let mut progress = progress.bytes_uploaded;
 
-        file.seek(SeekFrom::Start(progress as u64))?;
+        reader.seek(SeekFrom::Start(progress as u64))?;
 
         loop {
-            let bytes_read = file.read(&mut buffer)?;
+            let bytes_read = reader.read(&mut buffer)?;
             if bytes_read == 0 {
                 return Err(Error::FileReadError);
             }
