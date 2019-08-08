@@ -7,7 +7,7 @@ A Rust native client library to interact with *tus* enabled endpoints.
 `tus_client` requires a "handler" which implements the `HttpHandler` trait. To include a default implementation of this trait for [`reqwest`](https://crates.io/crates/reqwest), specify the `reqwest_impl` feature when including `tus_client` as a dependency.
 
 ```toml
-# Other parts of Cargo.toml mitted for brevity
+# Other parts of Cargo.toml omitted for brevity
 [dependencies]
 tus_client = {version = "x.x.x", features = ["reqwest_impl"]}
 ```

@@ -1,3 +1,46 @@
+//! # tus_client
+//!
+//! A Rust native client library to interact with *tus* enabled endpoints.
+//!
+//! ## `reqwest` implementation
+//!
+//! `tus_client` requires a "handler" which implements the `HttpHandler` trait. To include a default implementation of this trait for [`reqwest`](https://crates.io/crates/reqwest), specify the `reqwest_impl` feature when including `tus_client` as a dependency.
+//!
+//! ```toml
+//! # Other parts of Cargo.toml omitted for brevity
+//! [dependencies]
+//! tus_client = {version = "x.x.x", features = ["reqwest_impl"]}
+//! ```
+//!
+//! ## Usage
+//!
+//! Create an instance of the `tus_client::Client` struct.
+//!
+//! ```rust
+//! use tus_client::Client;
+//! use reqwest;
+//!
+//! // Assumes "reqwest_impl" feature is enabled (see above)
+//! let client = Client::new(reqwest::Client::new());
+//! ```
+//!
+//! You'll need an upload URL to be able to upload a files. This may be provided to you (through a separate API, for example), or you might need to create the file through the *tus* protocol. If an upload URL is provided for you, you can skip this step.
+//!
+//! ```rust
+//! let upload_url = client
+//! .create("https://my.tus.server/files/", "/path/to/file")
+//! .expect("Failed to create file on server");
+//! ```
+//!
+//! Next, you can start uploading the file by calling `upload`. The file will be uploaded in 5 MiB chunks by default. To customize the chunk size, use `upload_with_chunk_size` instead of `upload`.
+//!
+//! ```rust
+//! client
+//! .upload(&upload_url, "/path/to/file")
+//! .expect("Failed to upload file to server");
+//! ```
+//!
+//! `upload` (and `upload_with_chunk_size`) will automatically resume the upload from where it left off, if the upload transfer is interrupted.
 use crate::http::{default_headers, Headers, HttpHandler, HttpMethod, HttpRequest};
 use std::collections::HashMap;
 use std::fs::File;
@@ -9,6 +52,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 mod headers;
+/// Contains the `HttpHandler` trait and related structs. This module is only relevant when implement `HttpHandler` manually.
 pub mod http;
 
 #[cfg(feature = "reqwest_impl")]
@@ -16,12 +60,15 @@ mod reqwest;
 
 const DEFAULT_CHUNK_SIZE: usize = 5 * 1024 * 1024;
 
+/// Used to interact with a [tus](https://tus.io) endpoint.
 pub struct Client<'a> {
     use_method_override: bool,
     http_handler: Box<dyn HttpHandler + 'a>,
 }
 
 impl<'a> Client<'a> {
+    /// Instantiates a new instance of `Client`. `http_handler` needs to implement the `HttpHandler` trait.
+    /// A default implementation of this trait for the `reqwest` library is available by enabling the `reqwest_impl` feature.
     pub fn new(http_handler: impl HttpHandler + 'a) -> Self {
         Client {
             use_method_override: false,
@@ -29,6 +76,7 @@ impl<'a> Client<'a> {
         }
     }
 
+    /// Some environments might not support using the HTTP methods `PATCH` and `DELETE`. Use this method to create a `Client` which uses the `X-HTTP-METHOD-OVERRIDE` header to specify these methods instead.
     pub fn with_method_override(http_handler: impl HttpHandler + 'a) -> Self {
         Client {
             use_method_override: true,
@@ -36,7 +84,7 @@ impl<'a> Client<'a> {
         }
     }
 
-    /// Get the number of bytes already uploaded to the server
+    /// Get info about a file on the server.
     pub fn get_info(&self, url: &str) -> Result<UploadInfo, Error> {
         let req = self.create_request(HttpMethod::Head, url, None, Some(default_headers()));
 
@@ -80,10 +128,12 @@ impl<'a> Client<'a> {
         })
     }
 
+    /// Upload a file to the specified upload URL.
     pub fn upload(&self, url: &str, path: &Path) -> Result<(), Error> {
         self.upload_with_chunk_size(url, path, DEFAULT_CHUNK_SIZE)
     }
 
+    /// Upload a file to the specified upload URL with the given chunk size.
     pub fn upload_with_chunk_size(
         &self,
         url: &str,
@@ -187,10 +237,12 @@ impl<'a> Client<'a> {
         })
     }
 
+    /// Create a file on the server, receiving the upload URL of the file.
     pub fn create(&self, url: &str, path: &Path) -> Result<String, Error> {
         self.create_with_metadata(url, path, HashMap::new())
     }
 
+    /// Create a file on the server including the specified metadata, receiving the upload URL of the file.
     pub fn create_with_metadata(
         &self,
         url: &str,
@@ -232,6 +284,7 @@ impl<'a> Client<'a> {
         Ok(location.unwrap().to_owned())
     }
 
+    /// Delete a file on the server.
     pub fn delete(&self, url: &str) -> Result<(), Error> {
         let req = self.create_request(HttpMethod::Delete, url, None, Some(default_headers()));
 
@@ -272,26 +325,40 @@ impl<'a> Client<'a> {
     }
 }
 
+/// Describes a file on the server.
 #[derive(Debug)]
 pub struct UploadInfo {
+    /// How many bytes have been uploaded.
     pub bytes_uploaded: usize,
+    /// The total size of the file.
     pub total_size: Option<usize>,
+    /// Metadata supplied when the file was created.
     pub metadata: Option<HashMap<String, String>>,
 }
 
+/// Describes the tus enabled server.
 #[derive(Debug)]
 pub struct ServerInfo {
+    /// The different versions of the tus protocol supported by the server, ordered by preference.
     pub supported_versions: Vec<String>,
+    /// The extensions to the protocol supported by the server.
     pub extensions: Vec<TusExtension>,
+    /// The maximum supported total size of a file.
     pub max_upload_size: Option<usize>,
 }
 
+/// Enumerates the extensions to the tus protocol.
 #[derive(Debug, PartialEq)]
 pub enum TusExtension {
+    /// The server supports creating files.
     Creation,
+    //// The server supports setting expiration time on files and uploads.
     Expiration,
+    /// The server supports verifying checksums of uploaded chunks.
     Checksum,
+    /// The server supports deleting files.
     Termination,
+    /// The server supports parallel uploads of a single file.
     Concatenation,
 }
 
@@ -310,17 +377,28 @@ impl FromStr for TusExtension {
     }
 }
 
+/// Enumerates the errors which can occur during operation
 #[derive(Debug)]
 pub enum Error {
+    /// The status code returned by the server was not one of the expected ones.
     UnexpectedStatusCode(usize),
+    /// The file specified was not found by the server.
     NotFoundError,
+    /// A required header was missing from the server response.
     MissingHeader(String),
+    /// An error occurred while doing disk IO. This may be while reading a file, or during a network call.
     IoError(io::Error),
+    /// Unable to parse a value, which should be an integer.
     ParsingError(ParseIntError),
+    /// The size of the specified file, and the file size reported by the server do not match.
     UnequalSizeError,
+    /// Unable to read the file specified.
     FileReadError,
+    /// The `Client` tried to upload the file with an incorrect offset.
     WrongUploadOffsetError,
+    /// The specified file is larger that what is supported by the server.
     FileTooLarge,
+    /// An error occurred in the HTTP handler.
     HttpHandlerError(String),
 }
 
