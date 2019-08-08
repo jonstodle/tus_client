@@ -3,10 +3,16 @@ name = "tus_client"
 version = "0.1.0"
 authors = ["Jon Grythe Stødle <jonstodle@outlook.com>"]
 edition = "2018"
+license = "MIT"
+description = "A Rust native client library to interact with *tus* enabled endpoints."
+
+[features]
+reqwest_impl = ["reqwest"]
 
 [dependencies]
 base64 = "0.10"
-reqwest = "0.9"
+
+reqwest = {version = "0.9", optional = true}
 
 [dev-dependencies]
 tempfile = "3.1.0"

@@ -1,3 +1,5 @@
+#![cfg(feature = "reqwest_impl")]
+
 use std::collections::HashMap;
 use std::io::Write;
 use tempfile::NamedTempFile;

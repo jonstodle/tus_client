@@ -10,6 +10,8 @@ use std::str::FromStr;
 
 mod headers;
 pub mod http;
+
+#[cfg(feature = "reqwest_impl")]
 mod reqwest;
 
 const DEFAULT_CHUNK_SIZE: usize = 5 * 1024 * 1024;
