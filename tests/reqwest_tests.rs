@@ -1,4 +1,4 @@
-#![cfg(feature = "reqwest_impl")]
+#![cfg(feature = "reqwest")]
 
 use std::collections::HashMap;
 use std::io::Write;

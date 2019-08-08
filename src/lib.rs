@@ -4,37 +4,37 @@
 //!
 //! ## `reqwest` implementation
 //!
-//! `tus_client` requires a "handler" which implements the `HttpHandler` trait. To include a default implementation of this trait for [`reqwest`](https://crates.io/crates/reqwest), specify the `reqwest_impl` feature when including `tus_client` as a dependency.
+//! `tus_client` requires a "handler" which implements the `HttpHandler` trait. To include a default implementation of this trait for [`reqwest`](https://crates.io/crates/reqwest), specify the `reqwest` feature when including `tus_client` as a dependency.
 //!
 //! ```toml
 //! # Other parts of Cargo.toml omitted for brevity
 //! [dependencies]
-//! tus_client = {version = "x.x.x", features = ["reqwest_impl"]}
+//! tus_client = {version = "x.x.x", features = ["reqwest"]}
 //! ```
 //!
 //! ## Usage
-//!
-//! Create an instance of the `tus_client::Client` struct.
 //!
 //! ```rust
 //! use tus_client::Client;
 //! use reqwest;
 //!
-//! // Assumes "reqwest_impl" feature is enabled (see above)
+//! // Create an instance of the `tus_client::Client` struct.
+//! // Assumes "reqwest" feature is enabled (see above)
 //! let client = Client::new(reqwest::Client::new());
-//! ```
 //!
-//! You'll need an upload URL to be able to upload a files. This may be provided to you (through a separate API, for example), or you might need to create the file through the *tus* protocol. If an upload URL is provided for you, you can skip this step.
+//! // You'll need an upload URL to be able to upload a files.
+//! // This may be provided to you (through a separate API, for example),
+//! // or you might need to create the file through the *tus* protocol.
+//! // If an upload URL is provided for you, you can skip this step.
 //!
-//! ```rust
 //! let upload_url = client
 //! .create("https://my.tus.server/files/", "/path/to/file")
 //! .expect("Failed to create file on server");
-//! ```
 //!
-//! Next, you can start uploading the file by calling `upload`. The file will be uploaded in 5 MiB chunks by default. To customize the chunk size, use `upload_with_chunk_size` instead of `upload`.
+//! // Next, you can start uploading the file by calling `upload`.
+//! // The file will be uploaded in 5 MiB chunks by default.
+//! // To customize the chunk size, use `upload_with_chunk_size` instead of `upload`.
 //!
-//! ```rust
 //! client
 //! .upload(&upload_url, "/path/to/file")
 //! .expect("Failed to upload file to server");
@@ -43,6 +43,8 @@
 //! `upload` (and `upload_with_chunk_size`) will automatically resume the upload from where it left off, if the upload transfer is interrupted.
 use crate::http::{default_headers, Headers, HttpHandler, HttpMethod, HttpRequest};
 use std::collections::HashMap;
+use std::error::Error as StdError;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io;
 use std::io::{BufReader, Read, Seek, SeekFrom};
@@ -55,7 +57,7 @@ mod headers;
 /// Contains the `HttpHandler` trait and related structs. This module is only relevant when implement `HttpHandler` manually.
 pub mod http;
 
-#[cfg(feature = "reqwest_impl")]
+#[cfg(feature = "reqwest")]
 mod reqwest;
 
 const DEFAULT_CHUNK_SIZE: usize = 5 * 1024 * 1024;
@@ -68,7 +70,7 @@ pub struct Client<'a> {
 
 impl<'a> Client<'a> {
     /// Instantiates a new instance of `Client`. `http_handler` needs to implement the `HttpHandler` trait.
-    /// A default implementation of this trait for the `reqwest` library is available by enabling the `reqwest_impl` feature.
+    /// A default implementation of this trait for the `reqwest` library is available by enabling the `reqwest` feature.
     pub fn new(http_handler: impl HttpHandler + 'a) -> Self {
         Client {
             use_method_override: false,
@@ -401,6 +403,29 @@ pub enum Error {
     /// An error occurred in the HTTP handler.
     HttpHandlerError(String),
 }
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        let message = match self {
+            Error::UnexpectedStatusCode(status_code) => format!("The status code returned by the server was not one of the expected ones: {}", status_code),
+            Error::NotFoundError => "The file specified was not found by the server".to_string(),
+            Error::MissingHeader(header_name) => format!("The '{}' header was missing from the server response", header_name),
+            Error::IoError(error) => format!("An error occurred while doing disk IO. This may be while reading a file, or during a network call: {}", error),
+            Error::ParsingError(error) => format!("Unable to parse a value, which should be an integer: {}", error),
+            Error::UnequalSizeError => "The size of the specified file, and the file size reported by the server do not match".to_string(),
+            Error::FileReadError => "Unable to read the specified file".to_string(),
+            Error::WrongUploadOffsetError => "The client tried to upload the file with an incorrect offset".to_string(),
+            Error::FileTooLarge => "The specified file is larger that what is supported by the server".to_string(),
+            Error::HttpHandlerError(message) => format!("An error occurred in the HTTP handler: {}", message),
+        };
+
+        write!(f, "{}", message)?;
+
+        Ok(())
+    }
+}
+
+impl StdError for Error {}
 
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {

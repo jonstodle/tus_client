@@ -6,12 +6,8 @@ edition = "2018"
 license = "MIT"
 description = "A Rust native client library to interact with *tus* enabled endpoints."
 
-[features]
-reqwest_impl = ["reqwest"]
-
 [dependencies]
 base64 = "0.10"
-
 reqwest = {version = "0.9", optional = true}
 
 [dev-dependencies]
