@@ -200,10 +200,12 @@ impl<'a> Client<'a> {
             path.metadata()?.len().to_string(),
         );
         if !metadata.is_empty() {
-            let data = metadata.iter().fold(String::new(), |acc, (key, value)| {
-                acc.add(&format!("{}:{};", key, value))
-            });
-            headers.insert(headers::UPLOAD_METADATA.to_owned(), base64::encode(&data));
+            let data = metadata
+                .iter()
+                .map(|(key, value)| format!("{} {}", key, base64::encode(value)))
+                .collect::<Vec<_>>()
+                .join(",");
+            headers.insert(headers::UPLOAD_METADATA.to_owned(), data);
         }
 
         let req = self.create_request(HttpMethod::Post, url, None, Some(headers));
