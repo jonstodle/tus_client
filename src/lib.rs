@@ -4,12 +4,13 @@ use std::fs::File;
 use std::io;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::num::ParseIntError;
-use std::ops::{Add, Deref};
+use std::ops::Deref;
 use std::path::Path;
 use std::str::FromStr;
 
 mod headers;
 pub mod http;
+mod reqwest;
 
 const DEFAULT_CHUNK_SIZE: usize = 5 * 1024 * 1024;
 
@@ -318,6 +319,7 @@ pub enum Error {
     FileReadError,
     WrongUploadOffsetError,
     FileTooLarge,
+    HttpHandlerError(String),
 }
 
 impl From<io::Error> for Error {

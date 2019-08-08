@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::io;
 use std::io::Write;
 use tempfile::NamedTempFile;
 use tus_client;
 use tus_client::http::{HttpHandler, HttpMethod, HttpRequest, HttpResponse};
-use tus_client::TusExtension;
+use tus_client::{Error, TusExtension};
 
 struct TestHandler {
     pub upload_progress: usize,
@@ -29,7 +28,7 @@ impl Default for TestHandler {
 }
 
 impl HttpHandler for TestHandler {
-    fn handle_request(&self, req: HttpRequest) -> Result<HttpResponse, io::Error> {
+    fn handle_request(&self, req: HttpRequest) -> Result<HttpResponse, Error> {
         match &req.method {
             HttpMethod::Head => {
                 let mut headers = HashMap::new();

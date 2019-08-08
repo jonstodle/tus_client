@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::io::Error;
 use std::fmt;
+use crate::Error;
 
 pub type Headers = HashMap<String, String>;
 
