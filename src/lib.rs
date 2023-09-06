@@ -67,6 +67,7 @@ const DEFAULT_CHUNK_SIZE: usize = 5 * 1024 * 1024;
 pub struct Client<'a> {
     use_method_override: bool,
     http_handler: Box<dyn HttpHandler + 'a>,
+    auth_token: Option<String>,
 }
 
 impl<'a> Client<'a> {
@@ -76,6 +77,7 @@ impl<'a> Client<'a> {
         Client {
             use_method_override: false,
             http_handler: Box::new(http_handler),
+            auth_token: None,
         }
     }
 
@@ -84,7 +86,14 @@ impl<'a> Client<'a> {
         Client {
             use_method_override: true,
             http_handler: Box::new(http_handler),
+            auth_token: None,
         }
+    }
+
+    /// Sets the authentication token for the request.
+    pub fn with_auth_token(mut self, auth_token: impl Into<String>) -> Self {
+        self.auth_token = Some(auth_token.into());
+        self
     }
 
     /// Get info about a file on the server.
@@ -308,6 +317,10 @@ impl<'a> Client<'a> {
         headers: Option<Headers>,
     ) -> HttpRequest<'b> {
         let mut headers = headers.unwrap_or_default();
+
+        if let Some(auth_token) = &self.auth_token {
+            headers.insert("Authorization".to_owned(), format!("Bearer {}", auth_token));
+        }
 
         let method = if self.use_method_override {
             headers.insert(

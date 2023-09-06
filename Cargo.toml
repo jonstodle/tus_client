@@ -1,6 +1,6 @@
 [package]
 name = "tus_client"
-version = "0.1.1" # remember to update html_root_url
+version = "0.2.0" # remember to update html_root_url
 authors = ["Jon Grythe Stødle <jonstodle@outlook.com>"]
 edition = "2018"
 license = "MIT"
